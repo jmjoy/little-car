@@ -1,4 +1,4 @@
-use crate::control::ControlMode;
+use crate::control::{CarControl, ControlMode};
 use defmt::Format;
 use embassy_stm32::{
     interrupt::typelevel::Binding,
@@ -9,16 +9,7 @@ use embassy_stm32::{
 
 #[derive(Format)]
 pub enum BluetoothAction {
-    Stop,
-    Forward,
-    Backward,
-    TurnLeft,
-    TurnRight,
-    ForwardLeft,
-    ForwardRight,
-    BackwardLeft,
-    BackwardRight,
-    Speed(u8),
+    Car(CarControl),
     ControlMode(ControlMode),
 }
 
@@ -46,18 +37,20 @@ impl Bluetooth {
         self.rx.read(&mut buf).await.unwrap();
 
         match buf[0] {
-            0x30 => Ok(BluetoothAction::Stop),
-            0x31 => Ok(BluetoothAction::Forward),
-            0x32 => Ok(BluetoothAction::ForwardRight),
-            0x33 => Ok(BluetoothAction::TurnRight),
-            0x34 => Ok(BluetoothAction::BackwardRight),
-            0x35 => Ok(BluetoothAction::Backward),
-            0x36 => Ok(BluetoothAction::BackwardLeft),
-            0x37 => Ok(BluetoothAction::TurnLeft),
-            0x38 => Ok(BluetoothAction::ForwardLeft),
+            0x30 => Ok(BluetoothAction::Car(CarControl::Stop)),
+            0x31 => Ok(BluetoothAction::Car(CarControl::Forward)),
+            0x32 => Ok(BluetoothAction::Car(CarControl::ForwardRight)),
+            0x33 => Ok(BluetoothAction::Car(CarControl::TurnRight)),
+            0x34 => Ok(BluetoothAction::Car(CarControl::BackwardRight)),
+            0x35 => Ok(BluetoothAction::Car(CarControl::Backward)),
+            0x36 => Ok(BluetoothAction::Car(CarControl::BackwardLeft)),
+            0x37 => Ok(BluetoothAction::Car(CarControl::TurnLeft)),
+            0x38 => Ok(BluetoothAction::Car(CarControl::ForwardLeft)),
+            s @ 0x50..0x59 => Ok(BluetoothAction::Car(CarControl::SetSpeed(
+                50 + (s - 0x50) * 5,
+            ))),
             0x40 => Ok(BluetoothAction::ControlMode(ControlMode::AutoTrack)),
             0x41 => Ok(BluetoothAction::ControlMode(ControlMode::Bluetooth)),
-            s @ 0x50..0x59 => Ok(BluetoothAction::Speed(50 + (s - 0x50) * 5)),
             _ => Err(buf[0]),
         }
     }

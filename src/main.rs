@@ -10,7 +10,7 @@ mod ultrasound;
 
 use bluetooth::{Bluetooth, BluetoothAction};
 use car::Car;
-use control::{Control, ControlChannel, ControlMode, ControlModeWatch};
+use control::{CarControl, Control, ControlChannel, ControlMode, ControlModeWatch};
 use core::future;
 use defmt::{debug, error, info, warn};
 use defmt_rtt as _;
@@ -86,19 +86,21 @@ async fn main(spawner: Spawner) {
 
     loop {
         match CONTROL_CHANNEL.receive().await {
-            Control::CarStop => {
-                car.stop();
-                idle.set_idle(true);
-            }
-            Control::CarForward => car.forward(),
-            Control::CarBackward => car.backward(),
-            Control::CarTurnLeft => car.turn_left(),
-            Control::CarTurnRight => car.turn_right(),
-            Control::CarForwardLeft => car.forward_left(),
-            Control::CarForwardRight => car.forward_right(),
-            Control::CarBackwardLeft => car.backward_left(),
-            Control::CarBackwardRight => car.backward_right(),
-            Control::CarSetSpeed(speed) => car.set_speed(speed),
+            Control::Car(car_control) => match car_control {
+                CarControl::Stop => {
+                    car.stop();
+                    idle.set_idle(true);
+                }
+                CarControl::Forward => car.forward(),
+                CarControl::Backward => car.backward(),
+                CarControl::TurnLeft => car.turn_left(),
+                CarControl::TurnRight => car.turn_right(),
+                CarControl::ForwardLeft => car.forward_left(),
+                CarControl::ForwardRight => car.forward_right(),
+                CarControl::BackwardLeft => car.backward_left(),
+                CarControl::BackwardRight => car.backward_right(),
+                CarControl::SetSpeed(speed) => car.set_speed(speed),
+            },
             Control::ServoSetAngle(angle) => servo.set_angle(angle),
             Control::ControlModeSet(mode) => {
                 servo.set_angle(90);
@@ -143,47 +145,13 @@ async fn handle_bluetooth(mut bluetooth: Bluetooth) {
                     }
 
                     match action {
-                        BluetoothAction::Stop => {
-                            CONTROL_CHANNEL.send(Control::CarStop).await;
-                        }
-                        BluetoothAction::Forward => {
-                            CONTROL_CHANNEL.send(Control::CarForward).await;
-                        }
-                        BluetoothAction::Backward => {
-                            CONTROL_CHANNEL.send(Control::CarBackward).await;
-                        }
-                        BluetoothAction::TurnLeft => {
-                            CONTROL_CHANNEL.send(Control::CarTurnLeft).await;
-                        }
-                        BluetoothAction::TurnRight => {
-                            CONTROL_CHANNEL.send(Control::CarTurnRight).await;
-                        }
-                        BluetoothAction::ForwardLeft => {
-                            CONTROL_CHANNEL.send(Control::CarForwardLeft).await;
-                        }
-                        BluetoothAction::ForwardRight => {
-                            CONTROL_CHANNEL.send(Control::CarForwardRight).await;
-                        }
-                        BluetoothAction::BackwardLeft => {
-                            CONTROL_CHANNEL.send(Control::CarBackwardLeft).await;
-                        }
-                        BluetoothAction::BackwardRight => {
-                            CONTROL_CHANNEL.send(Control::CarBackwardRight).await;
-                        }
-                        BluetoothAction::Speed(speed) => {
-                            CONTROL_CHANNEL.send(Control::CarSetSpeed(speed)).await;
+                        BluetoothAction::Car(car_control) => {
+                            CONTROL_CHANNEL.send(Control::Car(car_control)).await;
                         }
                         BluetoothAction::ControlMode(mode) => {
                             CONTROL_CHANNEL.send(Control::ControlModeSet(mode)).await;
                         }
                     }
-
-                    CONTROL_CHANNEL
-                        .send(Control::IdleSetIdle(matches!(
-                            action,
-                            BluetoothAction::Stop
-                        )))
-                        .await;
                 }
                 Err(act) => error!("unknown action: {:?}", act),
             }
@@ -215,7 +183,7 @@ async fn handle_ultrasound(mut ultrasound: Ultrasound) {
             let distance = ultrasound.distance().await;
 
             if distance < 10. {
-                CONTROL_CHANNEL.send(Control::CarStop).await;
+                CONTROL_CHANNEL.send(Control::Car(CarControl::Stop)).await;
                 CONTROL_CHANNEL.send(Control::ServoSetAngle(0)).await;
                 Timer::after_secs(SERVO_SET_ANGLE_SECS).await;
 
@@ -234,18 +202,24 @@ async fn handle_ultrasound(mut ultrasound: Ultrasound) {
                             .await;
                         return;
                     } else {
-                        CONTROL_CHANNEL.send(Control::CarTurnLeft).await;
+                        CONTROL_CHANNEL
+                            .send(Control::Car(CarControl::TurnLeft))
+                            .await;
                         CONTROL_CHANNEL.send(Control::ServoSetAngle(90)).await;
                         Timer::after_millis(CAR_TURN_MILLIS).await;
                     }
                 } else {
-                    CONTROL_CHANNEL.send(Control::CarTurnRight).await;
+                    CONTROL_CHANNEL
+                        .send(Control::Car(CarControl::TurnRight))
+                        .await;
                     CONTROL_CHANNEL.send(Control::ServoSetAngle(90)).await;
                     Timer::after_millis(CAR_TURN_MILLIS).await;
                 }
             }
 
-            CONTROL_CHANNEL.send(Control::CarForward).await;
+            CONTROL_CHANNEL
+                .send(Control::Car(CarControl::Forward))
+                .await;
             CONTROL_CHANNEL.send(Control::IdleSetIdle(false)).await;
         };
 
